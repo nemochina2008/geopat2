@@ -48,7 +48,8 @@ int main(int argc, char *argv[])
     parameters=malloc(sizeof(LOCAL_PARAMS));
     datainfo=malloc(sizeof(DATAINFO));
     char *list_dist;
-    int num_of_layers=1;
+	  int i;
+	  int num_of_layers=get_num_of_grids(opt_input_grids->answers);
     unsigned num_of_seeds;
     unsigned* seeds;
     int* segment_map;
@@ -62,6 +63,7 @@ int main(int argc, char *argv[])
     struct arg_str  *mes   = arg_str0("m","measure","<measure_name>","similarity measure (use -l to list all measures; default: jsd)");
     struct arg_lit  *mesl  = arg_lit0("l","list_measures","list all measures");
     struct arg_dbl  *lower_threshold  = arg_dbl0(NULL,"lthreshold","<double>","minimum distance threshold to build areas (default: 0.1)");
+    struct arg_str  *weights  = arg_str0("w","weights","<weights_values>","weights used in a multilayer mode");
     struct arg_dbl  *upper_threshold  = arg_dbl0(NULL,"uthreshold","<double>","maximum distance threshold to build areas (default: 0.3");
     struct arg_dbl  *swap  = arg_dbl0(NULL,"swap","<double>","improve segmentation by swapping unmatched areas. -1 to skip (default: 0.001)");
     struct arg_int  *minarea    = arg_int0(NULL,"minarea","<n>","minimum number of motifels in individual segment (default: 0)");
@@ -76,7 +78,7 @@ int main(int argc, char *argv[])
     struct arg_end  *end   = arg_end(20);
 
     void* argtable[] = {inp,out,shp,size,mes,mesl,
-                        lower_threshold,upper_threshold,
+                        lower_threshold,upper_threshold,weights,
                         swap,minarea,maxhist,
                         flag_complete,/*flag_threshold,*/flag_skip_growing,
                         flag_skip_hierarchical,flag_quad,
@@ -195,29 +197,33 @@ int main(int argc, char *argv[])
 
 
 //    int i;
-    datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
+//    datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
+
+
+	  for(i=0;i<num_of_layers;++i) {
+		  datainfo[i]=malloc(num_of_layers*sizeof(DATAINFO));
+      init_grid_datainfo(datainfo[i],(char *)(inp->sval[i]),(char *)(out->sval[0]));
+//		  init_grid_datainfo(datainfo[i],opt_input_grids->answers[i],"OUTPUT",0);
+//		  if(i)
+//			  compare_grids_datainfo(datainfo[i-1], datainfo[i]);
+	  }
 
 /*
-	for(i=0;i<num_of_layers;++i) {
-		datainfo[i]=malloc(num_of_layers*sizeof(DATAINFO));
-		init_grid_datainfo(datainfo[i],opt_input_grids->answers[i],"OUTPUT",0);
-		if(i)
-			compare_grids_datainfo(datainfo[i-1], datainfo[i]);
-	}
-
-
 	G_message("Read data...");
 
 	for(i=0;i<num_of_layers;++i)
 		read_histograms_to_memory(datainfo[i],parameters);
 */
 
-    datainfo[0]=malloc(sizeof(DATAINFO));
+//    datainfo[0]=malloc(sizeof(DATAINFO));
 
 
 //rewrite:
-    init_grid_datainfo(datainfo[0],(char *)(inp->sval[0]),(char *)(out->sval[0]));
-    read_signatures_to_memory(datainfo[0]);
+ //   init_grid_datainfo(datainfo[0],(char *)(inp->sval[0]),(char *)(out->sval[0]));
+//    read_signatures_to_memory(datainfo[0]);
+	  for(i=0;i<num_of_layers;++i) {
+		  read_signatures_to_memory(datainfo[i]);
+    }
 /*
 i=0;
 while(datainfo[0]->all_histograms[i]==NULL) i++;
@@ -226,7 +232,7 @@ for(j=0; j<10; j++)
   printf("h[%d]: %lf\n",j,datainfo[0]->all_histograms[i][j]);
 */
 
-    hexgrid = hex_build_topology(datainfo,parameters,num_of_layers,0);
+    hexgrid = hex_build_topology(datainfo,parameters,num_of_layers,weigths->answer);
     areas = hex_build_areas(datainfo,hexgrid,parameters);
     results = hex_init_results(hexgrid);
     parameters->parameters = init_measure_parameters(datainfo[0]->size_of_histogram,0); /* we will use distance instead of similarity */
