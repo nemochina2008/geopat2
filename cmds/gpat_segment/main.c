@@ -49,7 +49,6 @@ int main(int argc, char *argv[])
     datainfo=malloc(sizeof(DATAINFO));
     char *list_dist;
 	  int i;
-	  int num_of_layers=get_num_of_grids(opt_input_grids->answers);
     unsigned num_of_seeds;
     unsigned* seeds;
     int* segment_map;
@@ -195,6 +194,7 @@ int main(int argc, char *argv[])
     } else 
       parameters->calculate = get_distance("jsd");
 
+	  int num_of_layers = get_num_of_grids(inp->sval[0]);
 
 //    int i;
 //    datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
