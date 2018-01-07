@@ -1,204 +1,122 @@
 /****************************************************************************
  *
- * PROGRAM:	gpat_segment - part of GeoPAT 2
- * AUTHOR(S):	Pawel Netzel
- * PURPOSE:	program for a grid of motifels segmentation;
- *		segmentation code by Jaroslaw Jasiewicz, Jacek Niesterowicz, 
- *		Tomasz Stepinski from GRASS GeoPAT 
- * COPYRIGHT:	(C) Pawel Netzel, Space Informatics Lab,
- *		University of Cincinnati
- *              http://sil.uc.edu
+ * MODULE:	p.sim.segment2
+ * AUTHOR(S):	Jaroslaw Jasiewicz, Jacek Niesterowicz, Tomasz Stepinski
+
+ * PURPOSE:	information retrival using categorical maps:
+ *		compares grid of histograms
+ * COPYRIGHT:	(C) Space Informatics Lab, Univeristy of Cincinnati
  *
- *		This program is free software under 
- *		the GNU General Public License (>=v3). 
- *		https://www.gnu.org/licenses/gpl-3.0.en.html
+ *		This program is free software under the GNU General Public
+ *		License (>=v2). Read the file COPYING that comes with GRASS
+ *		for details.
  *
  *****************************************************************************/
 #define MAIN
-#include <omp.h>
 #include "local_proto.h"
-
-#include <ezgdal.h>
-
-#include "../../lib/argtable/argtable3.h"
-#include "../../lib/measures/measures.h"
-#include "../../lib/tools/libtools.h"
-
-
-void usage(char *progname, void *argtable) {
-      printf("\nUsage:\n\t%s", progname);
-      arg_print_syntax(stdout,argtable,"\n");
-      printf("\n");
-      arg_print_glossary_gnu(stdout,argtable);
-      printf("\n");
-      exit(0);
-}
-
-
-
+#include <grass/glocale.h>
 
 int main(int argc, char *argv[])
 {
-//    Cell_head window;
-    CELL* results=NULL;
-    struct area** areas=NULL;
-    HEXGRID* hexgrid;
-    DATAINFO** datainfo;
-    LOCAL_PARAMS* parameters;
-    parameters=malloc(sizeof(LOCAL_PARAMS));
-    datainfo=malloc(sizeof(DATAINFO));
-    char *list_dist;
-    int num_of_layers=1;
-    unsigned num_of_seeds;
-    unsigned* seeds;
-    int* segment_map;
-    char *list;
-    int size_val = 1;
+	struct GModule *module;
 
-    struct arg_str  *inp   = arg_str1("i","input","<file_name>","name of input files (GRID)");
-    struct arg_str  *out   = arg_str1("o","output","<file_name>","name of output file with segments (TIFF)");
-    struct arg_str  *shp   = arg_str0("v","vector","<file_name>","name of output vector file with segments (SHP)");
-    struct arg_int  *size  = arg_int0(NULL,"size","<n>","output resolution modifier (default: 1)");
-    struct arg_str  *mes   = arg_str0("m","measure","<measure_name>","similarity measure (use -l to list all measures; default: jsd)");
-    struct arg_lit  *mesl  = arg_lit0("l","list_measures","list all measures");
-    struct arg_dbl  *lower_threshold  = arg_dbl0(NULL,"lthreshold","<double>","minimum distance threshold to build areas (default: 0.1)");
-    struct arg_str  *weights  = arg_str0("w","weights","<weights_values>","weights used in a multilayer mode");
-    struct arg_dbl  *upper_threshold  = arg_dbl0(NULL,"uthreshold","<double>","maximum distance threshold to build areas (default: 0.3");
-    struct arg_dbl  *swap  = arg_dbl0(NULL,"swap","<double>","improve segmentation by swapping unmatched areas. -1 to skip (default: 0.001)");
-    struct arg_int  *minarea    = arg_int0(NULL,"minarea","<n>","minimum number of motifels in individual segment (default: 0)");
-    struct arg_int  *maxhist    = arg_int0(NULL,"maxhist","<n>","create similarity/distance matrix for maxhist histograms; leave 0 to use all (default: 200)");
-    struct arg_lit  *flag_complete          = arg_lit0("c","complete","use complete linkage (default is average)");
-//    struct arg_lit  *flag_threshold         = arg_lit0("d","th_map","calculate threshold layer and exit (all params are ignored)");
-    struct arg_lit  *flag_skip_growing      = arg_lit0("g","no_growing","skip growing phase");
-    struct arg_lit  *flag_skip_hierarchical  = arg_lit0("a","no_hierarchical","skip hierarchical phase");
-    struct arg_lit  *flag_quad              = arg_lit0("q","quad","quad mode (rook topology)");
-    struct arg_int  *th    = arg_int0("t",NULL,"<n>","number of threads (default: 1)");
-    struct arg_lit  *help  = arg_lit0("h","help","print help and exit");
-    struct arg_end  *end   = arg_end(20);
+	/* menu */
+	struct Option* opt_input_grids=add_menu_item(INPUT_GRIDS);
+	struct Option* opt_nulls=add_menu_item(OPTION_NULLS);
+	struct Option* opt_dist_matrix_file=add_menu_item(INPUT_DIST_MATRIX_FILE);
+	struct Option* opt_measure=add_menu_item(OPTION_MEASURE);
+	struct Option* opt_lthreshold=add_local_menu_item(OPTION_LTHRESHOLD);
+	struct Option* opt_uthreshold=add_local_menu_item(OPTION_UTHRESHOLD);
+	struct Option* opt_weights=add_local_menu_item(OPTION_WEIGHTS);
+	struct Option* opt_swap=add_local_menu_item(OPTION_SWAP);
+	struct Option* opt_refine=add_local_menu_item(OPTION_REFINE);
+	struct Option* opt_minarea=add_menu_item(OPTION_MINAREA);
+	struct Option* opt_maxhist=add_menu_item(OPTION_MAXHIST);
+	struct Option* opt_output_layer=add_menu_item(OUTPUT_LAYER);
 
-    void* argtable[] = {inp,out,shp,size,mes,mesl,
-                        lower_threshold,upper_threshold,weights,
-                        swap,minarea,maxhist,
-                        flag_complete,/*flag_threshold,*/flag_skip_growing,
-                        flag_skip_hierarchical,flag_quad,
-                        th,help,end};
+	struct Flag* flag_complete=add_local_menu_flag(FLAG_COMPLETE);
+	struct Flag* flag_threshold=add_local_menu_flag(FLAG_THRESHOLD);
+	struct Flag* flag_growing=add_local_menu_flag(FLAG_GROWING);
+	struct Flag* flag_hierarhical=add_local_menu_flag(FLAG_HIERARHICAL);
+	struct Flag* flag_all=add_local_menu_flag(FLAG_ALL);
+	struct Flag* flag_quad=add_local_menu_flag(FLAG_QUAD);
 
-    int nerrors = arg_parse(argc,argv,argtable);
+	struct Cell_head window;
+	CELL* results=NULL;
+	struct area** areas=NULL;
+	HEXGRID* hexgrid;
+	DATAINFO** datainfo;
+	LOCAL_PARAMS* parameters;
+	parameters=G_malloc(sizeof(LOCAL_PARAMS));
+	datainfo=G_malloc(sizeof(DATAINFO));
 
-    if (help->count > 0) 
-      usage(argv[0],argtable);
+	G_gisinit(argv[0]);
+	module = G_define_module();
+	G_add_keyword(_("similarity"));
+	G_add_keyword(_("segmentation"));
+	G_add_keyword(_("information retrieval"));
+    module->description =
+	_("segments grid of histograms using available similarity measures and create layer of unique regions");
+	if (G_parser(argc, argv))
+		exit(EXIT_FAILURE);
 
-    /* list all measures */
-    if(mesl->count > 0) {
-      list = list_all_distances();
-      printf("\nList of measures:\n\n%s\n",list);
-      free(list);
-      exit(0);
-    }
-    
-    /* If the parser returned any errors then display them and exit */
-    if (nerrors > 0) {
-      /* Display the error details contained in the arg_end struct.*/
-      arg_print_errors(stdout,end,argv[0]);
-      usage(argv[0],argtable);
-    }
+	if(flag_growing->answer && flag_hierarhical->answer)
+		G_fatal_error(_("Only one flag -h or -g can be used"));
 
-    if(th->count > 0) 
-      omp_set_num_threads(th->ival[0]);
-    else
-      omp_set_num_threads(1);
+	if(strcmp(opt_measure->answer,"emd")==0 && opt_dist_matrix_file->answer==NULL)
+		G_fatal_error(_("Eart Mover Distance (emd) needs a distances matrix. Add the parameter: distfile!"));
 
+	parameters->null_threshold=atof(opt_nulls->answer);
+	if(parameters->null_threshold<0 || parameters->null_threshold>1)
+		G_fatal_error(_("Null threshold must be between 0 and 1"));
+	if(parameters->null_threshold>0.75)
+		G_warning("Null threshold <%f> may be too big",parameters->null_threshold);
 
-    if(!ezgdal_file_exists(inp->sval[0])) {
-      printf("\nInput file [%s] does not exist\n\n",inp->sval[0]);
-      exit(0);
-    }
+	parameters->lower_similarity_threshold=atof(opt_lthreshold->answer);
+	if(parameters->lower_similarity_threshold<0 || parameters->lower_similarity_threshold>1)
+		G_fatal_error(_("Lower distance threshold must be between 0 and 1"));
 
-    if(flag_skip_growing->count>0 && flag_skip_hierarchical->count>0) {
-      printf("\nOnly one flag of -a or -g can be used\n\n");
-      exit(0);
-    }
+	parameters->upper_similarity_threshold=atof(opt_uthreshold->answer);
+	if(parameters->upper_similarity_threshold<0 || parameters->upper_similarity_threshold>1)
+		G_fatal_error(_("Upper distance threshold must be between 0 and 1"));
 
-    if(lower_threshold->count>0)
-      parameters->lower_similarity_threshold=lower_threshold->dval[0];
-    else
-      parameters->lower_similarity_threshold=0.1;
-    if(parameters->lower_similarity_threshold<0.0 || parameters->lower_similarity_threshold>1.0) {
-      printf("\nLower distance threshold must be between 0 and 1\n\n");
-      exit(0);
-    }
+	if(parameters->upper_similarity_threshold < parameters->lower_similarity_threshold)
+		G_fatal_error(_("Upper distance threshold cannot be smaller than lower threshold"));
 
-    if(size->count>0) {
-      size_val = size->ival[0];
-      if(size_val<=0) size_val = 1;
-    }
+	parameters->sampling_threshold=atoi(opt_maxhist->answer);
+	if(parameters->sampling_threshold<0)
+		G_fatal_error(_("Sampling threshold cannot be negative"));
 
-    if(upper_threshold->count>0)
-      parameters->upper_similarity_threshold=upper_threshold->dval[0];
-    else
-      parameters->upper_similarity_threshold=0.3;
-    if(parameters->upper_similarity_threshold<0.0 || parameters->upper_similarity_threshold>1.0) {
-      printf("\nUpper distance threshold must be between 0 and 1\n\n");
-      exit(0);
-    }
-    if(parameters->upper_similarity_threshold < parameters->lower_similarity_threshold) {
-      printf("\nUpper distance threshold cannot be smaller than lower threshold\n\n");
-      exit(0);
-    }
+	parameters->minarea=atoi(opt_minarea->answer);
+	if(parameters->minarea<0)
+		G_fatal_error(_("area must be non-negative"));
 
-    if(swap->count>0)
-      parameters->swap_threshold=swap->dval[0];
-    else
-      parameters->swap_threshold=0.001;
-    if(parameters->swap_threshold>1.0) {
-      printf("\nSwap must be between 0 and 1 or negative to skip\n\n");
-      exit(0);
-    }
+	parameters->refinement=atoi(opt_refine->answer);
 
-    if(maxhist->count>0)
-      parameters->sampling_threshold=maxhist->ival[0];
-    else
-      parameters->sampling_threshold=200;
-    if(parameters->sampling_threshold<0) {
-      printf("\nSampling threshold cannot be negative\n\n");
-      exit(0);
-    }
+	parameters->reduction=0;
 
-    if(minarea->count>0)
-      parameters->minarea=minarea->ival[0];
-    else
-      parameters->minarea=0;
-    if(parameters->minarea<0) {
-      printf("\nArea must be non-negative\n\n");
-      exit(0);
-    }
+	parameters->swap_threshold=atof(opt_swap->answer);
+	if(parameters->swap_threshold>1)
+		G_fatal_error(_("swap must be between 0 and 1 or negative to skip"));
 
-    parameters->reduction=0;
+	parameters->quad_mode=(flag_quad->answer!=0);
+	parameters->complete_linkage=(flag_complete->answer!=0);
+	parameters->all_layers=(flag_all->answer!=0);
+	if(parameters->all_layers && opt_weights->answer)
+		G_warning("ignore weigths in <all layers> mode");
 
-    parameters->quad_mode=(flag_quad->count>0);
-    parameters->complete_linkage=(flag_complete->count>0);
-    parameters->null_threshold = 0.5;
-    parameters->all_layers = 0;
-
-    if(mes->count > 0) {
-      parameters->calculate = get_distance((char *)(mes->sval[0]));
-      /* measure not found */
-      if(parameters->calculate==NULL) {
-        printf("\nWrong distance measure: %s\n\n",mes->sval[0]);
-        printf("List of distances:\n");
-        list_dist = list_all_distances();
-        printf("\n%s\n",list_dist);
-        free(list_dist);
-        exit(0);
-      }
-    } else 
-      parameters->calculate = get_distance("jsd");
+	if(parameters->quad_mode && parameters->refinement>=0) {
+		G_warning("ignore refinement in quad model");
+		parameters->refinement=0;
+	}
 
 
-//    int i;
-    datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
+	Rast_get_window(&window);
+	parameters->calculate=measure_function(opt_measure->answer);
 
-/*
+	int i;
+	int num_of_layers=get_num_of_grids(opt_input_grids->answers);
+	datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
 	for(i=0;i<num_of_layers;++i) {
 		datainfo[i]=malloc(num_of_layers*sizeof(DATAINFO));
 		init_grid_datainfo(datainfo[i],opt_input_grids->answers[i],"OUTPUT",0);
@@ -207,37 +125,28 @@ int main(int argc, char *argv[])
 	}
 
 
+	if(strcmp(opt_measure->answer,"emd")==0) {
+		if(!measure_parameters_dist_matrix(parameters->parameters,opt_dist_matrix_file->answer))
+			G_fatal_error(_("Problem with distance matrix reading"));
+	} else if(strcmp(opt_measure->answer,"dtw")==0) {
+		measure_parameters_vector_size(parameters->parameters,datainfo[0]->pattern_size);
+	}
+
 	G_message("Read data...");
 
 	for(i=0;i<num_of_layers;++i)
 		read_histograms_to_memory(datainfo[i],parameters);
-*/
 
-    datainfo[0]=malloc(sizeof(DATAINFO));
+	hexgrid=hex_build_topology(datainfo,parameters,num_of_layers,opt_weights->answer,parameters->quad_mode);
+	areas=hex_build_areas(datainfo,hexgrid,parameters);
+	results=hex_init_results(hexgrid);
+	parameters->parameters=init_measure_parameters(datainfo[0]->size_of_histogram,0); /* we will use distance instead of similarity */
 
+	/* seeding starts here */
+	unsigned num_of_seeds;
+	unsigned* seeds=hex_find_seeds(hexgrid,parameters,areas,&num_of_seeds);
 
-//rewrite:
-    init_grid_datainfo(datainfo[0],(char *)(inp->sval[0]),(char *)(out->sval[0]));
-    read_signatures_to_memory(datainfo[0]);
-/*
-i=0;
-while(datainfo[0]->all_histograms[i]==NULL) i++;
-printf("i: %d\n",i);
-for(j=0; j<10; j++)
-  printf("h[%d]: %lf\n",j,datainfo[0]->all_histograms[i][j]);
-*/
-
-    hexgrid = hex_build_topology(datainfo,parameters,num_of_layers,0);
-    areas = hex_build_areas(datainfo,hexgrid,parameters);
-    results = hex_init_results(hexgrid);
-    parameters->parameters = init_measure_parameters(datainfo[0]->size_of_histogram,0); /* we will use distance instead of similarity */
-
-
-   /* seeding starts here */
-   seeds = hex_find_seeds(hexgrid,parameters,areas,&num_of_seeds);
-
-  /* thresholds only */
-/*
+	/* thresholds only */
 	if(flag_threshold->answer!=0) {
 		double* thresholds=create_thresholds_map(datainfo[0],hexgrid,parameters,areas);
 		Rast_get_window(&window);
@@ -252,43 +161,69 @@ for(j=0; j<10; j++)
 		hex_remove_hexgrid(hexgrid);
 		free(results);
 		free(datainfo);
-		free(parameters);
+		free(parameters); /* TODO: ADD RELEASE FUNCTION */;
 		free(hexgrid);
 		exit(EXIT_SUCCESS);
 	}
+
+	/* segmentation starts here */
+	if(!flag_growing->answer)
+		hex_region_growing(hexgrid,parameters,areas,results,seeds,num_of_seeds);
+
+	if(!flag_hierarhical->answer)
+		hex_hierarhical(hexgrid,parameters,areas,results);
+
+	if(parameters->minarea>0)
+		hex_minarea(hexgrid,parameters,areas,results);
+
+	if(parameters->swap_threshold>=0) {
+		swap_areas(hexgrid,parameters,areas,results,0);
+		if(parameters->minarea>0)
+			hex_minarea(hexgrid,parameters,areas,results);
+	}
+
+	/* refinement */
+	if (parameters->refinement>=0) {
+		G_message(_("Refinement..."));
+		free(results);
+		results=hex_create_segment_map(datainfo[0],hexgrid,parameters,areas); /* rebuild result in quad topology */
+		hex_remove_hexgrid(hexgrid); /* clean hexgrid */
+		/* rebuild input in quad topology */
+		hexgrid=hex_build_topology(datainfo,parameters,num_of_layers,opt_weights->answer,1);
+		areas=hex_rebuild_areas(hexgrid,parameters,results);
+		swap_areas(hexgrid,parameters,areas,results,parameters->refinement);
+		parameters->minarea*=2; /* temporary fixed */
+		parameters->upper_similarity_threshold=1;
+		if(parameters->minarea>0)
+			hex_minarea(hexgrid,parameters,areas,results);
+	}
+
+	hex_reclass(hexgrid,areas);
+	int* segment_map=hex_create_segment_map(datainfo[0],hexgrid,parameters,areas);
+
+
+	Rast_get_window(&window);
+	G_message(_("Change window to write results"));
+	Rast_set_window(&(datainfo[0]->cell_hd));
+	char map_name[100]="\0";
+	sprintf(map_name,"%s_SEGMENT",opt_output_layer->answer);
+	write_map(datainfo[0],parameters,(void*)segment_map,map_name,CELL_TYPE,1); /* write segment map */
+	G_message(_("Restore original region definition"));
+	Rast_set_window(&window);
+
+/*	for(i=0;i<ncells;++i)
+		if(areas[i]!=NULL)
+			remove_area(areas+i);
+	free(areas);
 */
-
-    /* segmentation starts here */
-    if(flag_skip_growing->count==0)
-        hex_region_growing(hexgrid,parameters,areas,results,seeds,num_of_seeds);
-
-    if(flag_skip_hierarchical->count==0)
-        hex_hierarchical(hexgrid,parameters,areas,results);
-
-    if(parameters->minarea>0)
-        hex_minarea(hexgrid,parameters,areas,results);
-
-    if(parameters->swap_threshold>=0) {
-         swap_areas(hexgrid,parameters,areas,results);
-         if(parameters->minarea>0)
-             hex_minarea(hexgrid,parameters,areas,results);
-    }
-
-    hex_reclass(hexgrid,areas);
-    segment_map=hex_create_segment_map(datainfo[0],hexgrid,parameters,areas);
-
-    write_raster(datainfo[0]->dh, (void*)segment_map, (char *)(out->sval[0]), size_val);
-    if(shp->count>0)
-	convert_to_vector((char *)(out->sval[0]),(char *)(shp->sval[0]));
-	
-    hex_remove_hexgrid(hexgrid);
-    free(segment_map);
-    free(results);
-    free(datainfo);
-    free(parameters); /* TODO: ADD RELEASE FUNCTION */;
-    free(hexgrid);
+	hex_remove_hexgrid(hexgrid);
+	free(segment_map);
+	free(results);
+	free(datainfo);
+	free(parameters); /* TODO: ADD RELEASE FUNCTION */;
+	free(hexgrid);
 
 
-    exit(0);
+exit(EXIT_SUCCESS);
 }
 

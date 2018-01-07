@@ -194,8 +194,9 @@ int main(int argc, char *argv[])
     } else 
       parameters->calculate = get_distance("jsd");
 
-	  int num_of_layers = get_num_of_grids(inp->sval[0]);
-
+//	  int num_of_layers = get_num_of_grids(inp->sval[0]);
+	  int num_of_layers = 2;
+    parameters->weights=weights->sval[0];
 //    int i;
 //    datainfo=malloc(num_of_layers*sizeof(DATAINFO*));
 
@@ -232,7 +233,7 @@ for(j=0; j<10; j++)
   printf("h[%d]: %lf\n",j,datainfo[0]->all_histograms[i][j]);
 */
 
-    hexgrid = hex_build_topology(datainfo,parameters,num_of_layers,weigths->answer);
+    hexgrid = hex_build_topology(datainfo,parameters,num_of_layers,(char *)(weights->sval[0]));
     areas = hex_build_areas(datainfo,hexgrid,parameters);
     results = hex_init_results(hexgrid);
     parameters->parameters = init_measure_parameters(datainfo[0]->size_of_histogram,0); /* we will use distance instead of similarity */

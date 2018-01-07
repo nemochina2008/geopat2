@@ -93,6 +93,7 @@ typedef struct {
 	int complete_linkage;
 	int all_layers; /* multilayer mode use _all_layers instead of _weighted_average */
 	int quad_mode; /* type of topology */
+        char weights;
 	double null_threshold;
 	double lower_similarity_threshold;
 	double upper_similarity_threshold;
